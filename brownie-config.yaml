@@ -4,3 +4,18 @@ compiler:
   solc:
     remappings:
       - '@chainlink=smartcontractkit/chainlink-brownie-contracts@1.1.1'
+dotenv: .env
+networks:
+  default: development
+  goerli:
+    eth_usd_price_feed: '0xD4a33860578De61DBAbDc8BFdb98FD742fA7028e'
+    verify: True
+  mainnet-fork-dev:
+    eth_usd_price_feed: '0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419'
+    verify: False
+  development:
+    verify: False
+  ganache_gui:
+    verify: False
+wallets:
+  from_key: ${PRIVATE_KEY}
