@@ -1,62 +1,99 @@
-from brownie import accounts, network, config, MockV3Aggregator
-from web3 import Web3
+from brownie import (
+    accounts, 
+    network, 
+    config, 
+    MockV3Aggregator, 
+    VRFCoordinatorMock,
+    LinkToken,
+    Contract,
+    interface
+)
 
 
 FORKED_LOCAL_ENVIRONMENTS = ['mainnet-fork-dev']
 LOCAL_BLOCKCHAIN_ENVIRONMENTS = ['development', 'ganache_gui']
 
 DECIMALS = 8
-STARTING_PRICE = 200000000000
+STARTING_PRICE = 200000000000 # in GWEI
+LINK_FEE = 100000000000000000 # in LINK, with 18 decimal places
+
+contract_to_mock = {
+    "eth_usd_price_feed":MockV3Aggregator,
+    "vrf_coordinator":VRFCoordinatorMock,
+    "link_token":LinkToken,
+}
 
 
-def get_account():
+def get_account(index=None, id=None):
+    if index: 
+        return accounts[index]
+    if id:
+        return accounts.load(id)
     if (
         network.show_active() in LOCAL_BLOCKCHAIN_ENVIRONMENTS
         or network.show_active() in FORKED_LOCAL_ENVIRONMENTS
     ):
-        return accounts[0]
-    else:
-        return accounts.add(config["wallets"]["from_key"])
+        return accounts[0]    
+ 
+    return accounts.add(config["wallets"]["from_key"])
 
 
-def deploy_mocks(force_deploy=False):
+def deploy_mocks(decimals=DECIMALS, initial_value=STARTING_PRICE):
     """
-    This function deploys MockV3Aggregator.sol to simulate 
-    pricefeed.
+    Deploy all mock versions of V3Aggregator, LinkToken & VRFCoordinator
 
-    Observation:
-    ------------
-    The MockV3Aggregator contract has 2 constructor parameters:
-
-    <_decimals> uint8
-    <_initialAnswer> int256
-
-       ----------------solidity code--------------------
-                constructor(
-                    uint8 _decimals,
-                    int256 _initialAnswer
-                ) public {
-                    decimals = _decimals;
-                    updateAnswer(_initialAnswer);
-                }
-     ----------------------------------------------------   
     Returns:
         None
     """
-    print(f'The active network is {network.show_active()}')
-    print(f'Deploying Mocks')
-    
-    if len(MockV3Aggregator) <=0 or force_deploy:
-        _decimals = DECIMALS 
-        #_initialAnswer = Web3.toWei(int(STARTING_PRICE),"ether") # 2000 x 10^18 = 2000000000000000000000
-        _initialAnswer = STARTING_PRICE 
-        # deploy:
-        MockV3Aggregator.deploy(
-            _decimals,        # constructor param
-            _initialAnswer,   # constructor param
-            {'from':get_account()},
-        )
-        print(f'( ͡❛ ͜ʖ ͡❛) ( ͡❛ ͜ʖ ͡❛) Mocks Deployed ( ͡❛ ͜ʖ ͡❛) ( ͡❛ ͜ʖ ͡❛)\n')        
-    else:
-        print(f'MockV3Aggregator is already deployed\n')
+    print(f'The active network is {network.show_active()}\nDeploying Mocks')
+    MockV3Aggregator.deploy(
+        decimals,                                         # constructor param
+        initial_value,                                    # constructor param
+        {'from':get_account()},
+    )    
+    link_token = LinkToken.deploy({'from':get_account()}) # no constructor param
+    VRFCoordinatorMock.deploy(
+        link_token.address,                               # constructor param     
+        {'from':get_account()},
+    )
+    print(f'( ͡❛ ͜ʖ ͡❛) ( ͡❛ ͜ʖ ͡❛) Mocks Deployed ( ͡❛ ͜ʖ ͡❛) ( ͡❛ ͜ʖ ͡❛)\n')
     return
+
+
+def get_contract(contract_name):
+    """This function will grab the contract address from the brownie config
+    if defined, otherwise it will deploy a mock version of that contract, and
+    return that contract
+
+        Args:
+            contract_name: str
+
+        Returns:
+            brownie.network.contract.ProjectContract: the most recently deployed
+            version of this contract
+    """
+    contract_type = contract_to_mock[contract_name]
+    
+    if network.show_active() in LOCAL_BLOCKCHAIN_ENVIRONMENTS:
+        if len(contract_type) <= 0: # it means that contract was not yet deployed
+            deploy_mocks()
+        contract = contract_type[-1] # after deployment, get the contract
+    else:
+        contract_address = config['networks'][network.show_active()][contract_name]
+        # address
+        # abi
+        contract = Contract.from_abi(
+            contract_type.__name__, contract_address, contract_type.abi
+        )
+    return contract
+
+
+def fund_with_link(contract_address, account=None, link_token=None, ammount=LINK_FEE):
+    account = account if account else get_account()
+    link_token = link_token if link_token else get_contract("link_token")
+    tx = link_token.transfer(contract_address, ammount, {"from":account})
+    #link_token_contract = interface.LinkTokenInterface(link_token.address)
+    #tx = link_token_contract.transfer(contract_address, ammount, {"from":account})
+    tx.wait(1)
+    print("Fund Contract!")
+    return tx
