@@ -21,6 +21,7 @@ contract Lottery is Ownable, VRFConsumerBase {
     LOTTERY_STATE public lottery_state;
     uint256 public fee;
     bytes32 public keyHash;
+    event RequestedRandomness(bytes32 requestId);
 
 
     constructor(
@@ -117,7 +118,8 @@ contract Lottery is Ownable, VRFConsumerBase {
             In thes function we will make a transaction to resquest a random number
         */
         lottery_state = LOTTERY_STATE.CALCULATING_WINNER;
-        bytes32 requestID = requestRandomness(keyHash, fee);        
+        bytes32 requestID = requestRandomness(keyHash, fee); 
+        emit RequestedRandomness(requestID); 
     }
 
     function getPlayersLenght() public view returns(uint256) {
